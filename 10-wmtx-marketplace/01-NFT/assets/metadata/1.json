@@ -1,0 +1,24 @@
+{
+  "name": "Traveling Panda #1",
+  "description": "A world traveling panda.",
+  "image": "https://gateway.pinata.cloud/ipfs/bafybeid7mnkdt5ja6x5scjaqr6vx2isiajpwhp2qrtb7midmcwod47cr7e/1.png",
+  "attributes": [
+
+    {
+      "trait_type": "Hat",
+      "value": "Straw"
+    },
+    {
+      "trait_type": "Location",
+      "value": "Asia"
+    },
+    {
+      "trait_type": "Item1",
+      "value": "Map"
+    },
+    {
+      "trait_type": "Item2",
+      "value": "Suitcase"
+    }
+  ]
+}

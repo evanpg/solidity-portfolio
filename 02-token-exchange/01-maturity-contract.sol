@@ -1,15 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-contract Trust {
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+
+contract Trust is ReentrancyGuard {
 
     struct Kid {
         uint amount;
         uint maturity;
+        string name;
         bool paid;
+        bool cancelled;
+        bool exists;
     }
 
     mapping(address => Kid) public kids;
+
     address public parent;
 
     event KidAdded(address kid, uint maturity, uint amount);
@@ -18,58 +25,63 @@ contract Trust {
 
     constructor() {
         parent = msg.sender;
-    }
+    } 
 
-    // Allow contract to receive ETH directly
-    receive() external payable {}
 
-    function addKid(address kid, uint timeToMaturity) external payable {
-        require(msg.sender == parent, "Only parent can add a kid");
+    function addKid(address kid, string memory name, uint timeToMaturity) 
+    external payable {
+        require(msg.sender == parent, "Must be parent to add kid");
         require(msg.value > 0, "Must send ETH");
-        require(kids[kid].maturity == 0, "Kid already exists");
+        require(!kids[kid].exists, "kid already exists");
 
         kids[kid] = Kid({
             amount: msg.value,
             maturity: block.timestamp + timeToMaturity,
-            paid: false
+            paid: false,
+            name: name,
+            cancelled: false,
+            exists: true
         });
 
         emit KidAdded(kid, kids[kid].maturity, msg.value);
     }
 
-    function withdraw() external {
-        Kid storage kid = kids[msg.sender];
+    function cancelKid(address kidAddress)
+    external nonReentrant {
+        require(msg.sender == parent, "Must be parent to cancel trust");
 
-        require(kid.maturity > 0, "Not a kid");
-        require(block.timestamp >= kid.maturity, "Too early");
-        require(!kid.paid, "Already paid");
-
-        uint amount = kid.amount;
-        kid.paid = true;
-
-        emit Withdrawn(msg.sender, amount);
-
-        (bool success, ) = payable(msg.sender).call{value: amount}("");
-        require(success, "Transfer failed");
-
-        delete kids[msg.sender];
-    }
-
-    function cancelKid(address kidAddress) external {
-        require(msg.sender == parent, "Only parent");
-        
         Kid storage kid = kids[kidAddress];
-        require(kid.maturity > 0, "Kid does not exist");
-        require(!kid.paid, "Already paid");
+        require(kid.exists, "kid doesn't exist");
+        require(!kid.paid, "kid already paid");
+        require(!kid.cancelled, "trust already cancelled");
 
+        kid.cancelled = true;
         uint amount = kid.amount;
-
-        delete kids[kidAddress];
+        kid.amount = 0;
 
         emit KidRemoved(kidAddress, amount);
 
-        // Refund parent
-        (bool success, ) = payable(parent).call{value: amount}("");
-        require(success, "Refund failed");
+        (bool success,) = payable(parent).call{value: amount}("");
+        require(success, "refund failed");
+    }
+
+    function withdraw(address kidAddress) 
+    external nonReentrant {
+        require(msg.sender == kidAddress, "must be kid");
+        
+        Kid storage kid = kids[kidAddress];
+        require(kid.exists, "kid doesn't exist");
+        require(block.timestamp >= kid.maturity, "maturity not met");
+        require(!kid.cancelled, "trust already cancelled");
+        require(!kid.paid, "kid already paid");
+
+        kid.paid = true;
+        uint amount = kid.amount;
+        kid.amount = 0;
+
+        emit Withdrawn(msg.sender, amount);
+
+        (bool success,) = payable(kidAddress).call{value: amount}("");
+        require(success, "payment failed");
     }
 }
