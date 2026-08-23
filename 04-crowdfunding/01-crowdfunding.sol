@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-contract CrowdFunding {
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+
+contract CrowdFunding is ReentrancyGuard{
 
     mapping(address => uint) public contributors;
     address public manager;
@@ -30,6 +33,30 @@ contract CrowdFunding {
         manager = msg.sender;
     }
 
+
+    modifier onlyManager() {
+        require(msg.sender == manager, "Only manager");
+        _;
+    }
+
+
+    function getContractBalance() public view returns (uint) {
+        return address(this).balance;
+    }
+
+    function createRequest(string memory _description, address payable _recipient, uint _value)
+    public onlyManager {
+
+        Request storage newRequest = requests[numRequests];
+        numRequests++;
+
+        newRequest.description = _description;
+        newRequest.recipient = _recipient;
+        newRequest.value = _value;
+        newRequest.isCompleted = false;
+        newRequest.numVoters = 0;
+    }
+
     function sendEth() public payable {
         require(block.timestamp < deadLine, "Deadline passed");
         require(msg.value >= minContribution, "Minimum contribution not met");
@@ -40,42 +67,6 @@ contract CrowdFunding {
 
         contributors[msg.sender] += msg.value;
         raisedAmount += msg.value;
-    }
-
-    function getContractBalance() public view returns (uint) {
-        return address(this).balance;
-    }
-
-    function refund() public {
-        require(block.timestamp > deadLine && raisedAmount < target, "Refund not allowed");
-        require(contributors[msg.sender] > 0, "No contribution");
-
-        uint amount = contributors[msg.sender];
-        contributors[msg.sender] = 0;
-
-        (bool success, ) = payable(msg.sender).call{value: amount}("");
-        require(success, "Refund failed");
-    }
-
-    modifier onlyManager() {
-        require(msg.sender == manager, "Only manager");
-        _;
-    }
-
-    function createRequest(
-        string memory _description,
-        address payable _recipient,
-        uint _value
-    ) public onlyManager {
-
-        Request storage newRequest = requests[numRequests];
-        numRequests++;
-
-        newRequest.description = _description;
-        newRequest.recipient = _recipient;
-        newRequest.value = _value;
-        newRequest.isCompleted = false;
-        newRequest.numVoters = 0;
     }
 
     function voteRequest(uint _requestNo) public {
@@ -90,7 +81,7 @@ contract CrowdFunding {
         thisRequest.numVoters++;
     }
 
-    function makePayment(uint _requestNo) public onlyManager {
+    function payOutRecipientAddress(uint _requestNo) public nonReentrant onlyManager {
         require(raisedAmount >= target, "Target not met");
         require(_requestNo < numRequests, "Invalid request");
 
@@ -105,4 +96,17 @@ contract CrowdFunding {
         (bool success, ) = thisRequest.recipient.call{value: thisRequest.value}("");
         require(success, "Payment failed");
     }
+
+    function refund() public nonReentrant {
+        require(block.timestamp > deadLine && raisedAmount < target, "Refund not allowed");
+        require(contributors[msg.sender] > 0, "No contribution");
+
+        uint amount = contributors[msg.sender];
+        contributors[msg.sender] = 0;
+        raisedAmount -= amount;
+
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
+        require(success, "Refund failed");
+    }
+
 }

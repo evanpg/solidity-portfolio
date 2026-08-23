@@ -33,7 +33,7 @@ contract Lottery is ReentrancyGuard {
         );
     }
 
-    function pickWinner() external nonReentrant{
+    function pickWinner() external nonReentrant {
         require(msg.sender == admin, "Only admin");
         require(participants.length >= 2, "Not enough participants");
 
