@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 
-contract CrowdFunding is ReentrancyGuard{
+contract CrowdFunding is ReentrancyGuard {
 
     mapping(address => uint) public contributors;
     address public manager;

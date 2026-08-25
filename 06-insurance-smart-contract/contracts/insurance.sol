@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-contract Insurance {
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+
+contract Insurance is ReentrancyGuard {
     address public insurer;
+
     uint public policyCounter;
 
     struct Policy {
@@ -18,7 +22,12 @@ contract Insurance {
 
     mapping(uint => Policy) public policies;
 
-    // 🔔 Events (very important for tracking)
+
+    constructor() {
+        insurer = msg.sender;
+    }
+
+
     event PolicyCreated(uint policyId, address policyHolder, uint premium, uint coverageAmount);
     event PremiumPaid(uint policyId, address policyHolder);
     event ClaimSubmitted(uint policyId);
@@ -26,11 +35,7 @@ contract Insurance {
     event PayoutDone(uint policyId, uint amount);
     event FundsDeposited(address from, uint amount);
 
-    constructor() {
-        insurer = msg.sender;
-    }
 
-    // 🔒 Modifiers
     modifier onlyInsurer() {
         require(msg.sender == insurer, "Only insurer allowed");
         _;
@@ -41,33 +46,34 @@ contract Insurance {
         _;
     }
 
-    // 🏦 Allow insurer to fund contract
+
     function fundContract() external payable onlyInsurer {
         require(msg.value > 0, "Must send ETH");
         emit FundsDeposited(msg.sender, msg.value);
     }
 
-    function createPolicy(address _policyHolder, uint _premium, uint _coverageAmount) public onlyInsurer {
+    function createPolicy(address _policyHolder, uint _premium, uint _coverageAmount) 
+    public onlyInsurer {
         require(_policyHolder != address(0), "Invalid address");
         require(_premium > 0, "Premium must be > 0");
         require(_coverageAmount > 0, "Coverage must be > 0");
 
         policyCounter++;
 
-        policies[policyCounter] = Policy(
-            _policyHolder,
-            _premium,
-            _coverageAmount,
-            false,
-            false,
-            false,
-            false
-        );
+        policies[policyCounter] = Policy({
+            policyHolder: _policyHolder,
+            premium: _premium,
+            coverageAmount: _coverageAmount,
+            isClaimed: false,
+            isClaimApproved: false,
+            premiumPaid: false,
+            payoutDone: false
+    });
 
         emit PolicyCreated(policyCounter, _policyHolder, _premium, _coverageAmount);
     }
 
-    function payPremium(uint _policyId) public payable validPolicy(_policyId) {
+    function payPremium(uint _policyId) external payable validPolicy(_policyId) {
         Policy storage policy = policies[_policyId];
 
         require(msg.sender == policy.policyHolder, "Only policy holder");
@@ -79,7 +85,7 @@ contract Insurance {
         emit PremiumPaid(_policyId, msg.sender);
     }
 
-    function submitClaim(uint _policyId) public validPolicy(_policyId) {
+    function submitClaim(uint _policyId) external validPolicy(_policyId) {
         Policy storage policy = policies[_policyId];
 
         require(msg.sender == policy.policyHolder, "Only policy holder");
@@ -91,7 +97,7 @@ contract Insurance {
         emit ClaimSubmitted(_policyId);
     }
 
-    function approveClaim(uint _policyId) public onlyInsurer validPolicy(_policyId) {
+    function approveClaim(uint _policyId) external onlyInsurer validPolicy(_policyId) {
         Policy storage policy = policies[_policyId];
 
         require(policy.isClaimed, "No claim submitted");
@@ -102,7 +108,7 @@ contract Insurance {
         emit ClaimApproved(_policyId);
     }
 
-    function claimPayout(uint _policyId) public validPolicy(_policyId) {
+    function claimPayout(uint _policyId) external validPolicy(_policyId) {
         Policy storage policy = policies[_policyId];
 
         require(msg.sender == policy.policyHolder, "Only policy holder");
@@ -113,7 +119,6 @@ contract Insurance {
 
         require(address(this).balance >= amount, "Insufficient contract funds");
 
-        // Effects before interaction (reentrancy-safe pattern)
         policy.payoutDone = true;
 
         (bool success, ) = payable(policy.policyHolder).call{value: amount}("");
@@ -122,18 +127,11 @@ contract Insurance {
         emit PayoutDone(_policyId, amount);
     }
 
-    
-    // -------------------------
-    // VIEW HELPERS
-    // -------------------------
-
-    function policyDetails(uint _policyId) public view validPolicy(_policyId) 
-    returns (Policy memory) {
+    function policyDetails(uint _policyId) external view validPolicy(_policyId) returns (Policy memory) {
         return policies[_policyId];
     }
 
-    // 📊 Check contract balance
-    function getContractBalance() public view returns (uint) {
+    function getContractBalance() external view returns (uint) {
         return address(this).balance;
     }
 
